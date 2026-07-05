@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>VocaFly</title>
-  <link rel="icon" href="icon.png">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -188,11 +188,80 @@
     }
     .notif-status.ok { color: #55aa77; }
     .notif-status.blocked { color: #aa5555; }
+
+    .search-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 19;
+    }
+    .search-backdrop.on { display: block; }
+
+    .search-wrap {
+      position: fixed;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(360px, 85vw);
+      z-index: 20;
+    }
+
+    .search-input {
+      width: 100%;
+      background: #1a1a24;
+      border: 1px solid #2a2a38;
+      color: #e8e8f0;
+      padding: 9px 16px;
+      border-radius: 50px;
+      font-size: 16px; /* prevent iOS auto-zoom */
+      outline: none;
+      transition: border-color 0.2s;
+      font-family: inherit;
+    }
+    .search-input::placeholder { color: #44445a; }
+    .search-input:focus { border-color: #4a4a6a; }
+
+    .suggestions {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0; right: 0;
+      background: #1a1a24;
+      border: 1px solid #2a2a38;
+      border-radius: 14px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      max-height: 260px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .suggestions.open { display: block; }
+
+    .sug-item {
+      padding: 12px 16px;
+      font-size: 15px;
+      color: #a0a0c0;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-bottom: 1px solid #1f1f2e;
+    }
+    .sug-item:last-child { border-bottom: none; }
+    .sug-item:hover, .sug-item:active { background: #22222e; color: #e8e8f0; }
+    .sug-item mark { background: none; color: #8878f0; font-weight: 600; }
   </style>
 </head>
 <body>
 
 <h1>VocaFly</h1>
+
+<div class="search-backdrop" id="searchBackdrop"></div>
+<div class="search-wrap">
+  <input class="search-input" id="searchInput" type="text" placeholder="Search words…" autocomplete="off">
+  <div class="suggestions" id="suggestions"></div>
+</div>
 
 <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
 
@@ -371,6 +440,70 @@ if (saved) {
   }
 } else {
   updateNotifStatus(false);
+}
+
+// Search
+const searchInput = document.getElementById('searchInput');
+const suggestionsEl = document.getElementById('suggestions');
+const searchBackdrop = document.getElementById('searchBackdrop');
+let sugMatches = [];
+
+function closeSearch() {
+  suggestionsEl.classList.remove('open');
+  searchBackdrop.classList.remove('on');
+  searchInput.blur();
+}
+
+function clampSugHeight() {
+  const vp = window.visualViewport;
+  if (!vp) return;
+  const rect = suggestionsEl.getBoundingClientRect();
+  const available = vp.height - rect.top - 8;
+  suggestionsEl.style.maxHeight = Math.max(80, available) + 'px';
+}
+
+searchInput.addEventListener('focus', () => searchBackdrop.classList.add('on'));
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim().toLowerCase();
+  if (!q || !words.length) { suggestionsEl.classList.remove('open'); return; }
+  sugMatches = words.filter(w => w.word.toLowerCase().includes(q)).slice(0, 8);
+  if (!sugMatches.length) { suggestionsEl.classList.remove('open'); return; }
+  suggestionsEl.innerHTML = sugMatches.map((w, i) => {
+    const lower = w.word.toLowerCase();
+    const qi = lower.indexOf(q);
+    const hl = esc(w.word.slice(0, qi)) +
+               `<mark>${esc(w.word.slice(qi, qi + q.length))}</mark>` +
+               esc(w.word.slice(qi + q.length));
+    return `<div class="sug-item" data-i="${i}">${hl}</div>`;
+  }).join('');
+  suggestionsEl.classList.add('open');
+  clampSugHeight();
+});
+
+suggestionsEl.addEventListener('click', e => {
+  const item = e.target.closest('.sug-item');
+  if (!item) return;
+  const entry = sugMatches[+item.dataset.i];
+  searchInput.value = '';
+  closeSearch();
+  current = words.indexOf(entry);
+  showWord(entry);
+});
+
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSearch();
+});
+
+searchBackdrop.addEventListener('click', () => {
+  searchInput.value = '';
+  closeSearch();
+});
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    if (suggestionsEl.classList.contains('open')) clampSugHeight();
+  });
 }
 
 loadWords();
