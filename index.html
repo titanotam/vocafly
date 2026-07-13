@@ -472,7 +472,7 @@ document.getElementById('submitWordBtn').addEventListener('click', async e => {
   statusEl.textContent = 'Saving…';
   statusEl.className = 'notif-status';
   try {
-    const res = await fetch('/api/words', {
+    const res = await fetch('api/words', {
       method: editingOriginalWord ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(editingOriginalWord ? { original: editingOriginalWord, word, definition } : { word, definition })
