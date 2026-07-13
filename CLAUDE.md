@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-VocaFly — single-page vocab flashcard app. No build step, no package manager, no framework. Everything lives in [index.html](index.html): inline `<style>` + inline `<script>`, vanilla JS/DOM.
+VocaFly — single-page vocab flashcard app. No build step, no package manager, no framework. Everything lives in [index.html](index.html): inline `<style>` + inline `<script>`, vanilla JS/DOM. [server.js](server.js) is a dependency-free Node `http` server: serves the static files and exposes `POST /api/words` to append entries to `words.json` from the in-page "add word" form.
 
 ## Running it
 
-No build/test/lint commands exist. Serve statically and open in browser, e.g.:
+No build/lint/test tooling. Run the zero-dependency Node server (needed for the add-word API, not just static serving):
 
 ```
-python3 -m http.server 8000
+node server.js        # http://localhost:8000, PORT env var to override
 ```
 
 `words.json` is fetched via `fetch('words.json')`, so opening `index.html` directly as `file://` will fail (CORS) — must be served over HTTP.

@@ -145,6 +145,7 @@
       line-height: 1;
     }
     .settings-btn:hover { color: #7070a0; background: #1a1a24; }
+    .add-btn { right: 66px; }
 
     .panel {
       display: none;
@@ -157,7 +158,7 @@
       padding: 20px 24px;
       width: 230px;
       box-shadow: 0 8px 30px rgba(0,0,0,0.5);
-      z-index: 10;
+      z-index: 21;
     }
     .panel.open { display: block; }
 
@@ -179,6 +180,19 @@
       font-size: 13px;
       margin-bottom: 14px;
       cursor: pointer;
+    }
+
+    .panel input[type="text"], .panel textarea {
+      width: 100%;
+      background: #0f0f13;
+      border: 1px solid #2a2a38;
+      color: #e8e8f0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      margin-bottom: 14px;
+      font-family: inherit;
+      resize: vertical;
     }
 
     .notif-status {
@@ -263,7 +277,20 @@
   <div class="suggestions" id="suggestions"></div>
 </div>
 
+<button class="settings-btn add-btn" id="addBtn" title="Add word">+</button>
 <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
+
+<div class="panel" id="addPanel">
+  <label>Word</label>
+  <div style="position:relative">
+    <input type="text" id="newWord" placeholder="e.g. demolish (v)" autocomplete="off">
+    <div class="suggestions" id="newWordSuggestions"></div>
+  </div>
+  <label>Definition</label>
+  <textarea id="newDefinition" rows="4" placeholder="Definition text…"></textarea>
+  <button id="submitWordBtn" class="primary" style="width:100%">Add word</button>
+  <div class="notif-status" id="addStatus"></div>
+</div>
 
 <div class="panel" id="panel">
   <label>Notification interval</label>
@@ -357,10 +384,119 @@ document.getElementById('nextBtn').addEventListener('click', e => {
 // Settings panel
 document.getElementById('settingsBtn').addEventListener('click', e => {
   e.stopPropagation();
+  document.getElementById('addPanel').classList.remove('open');
   document.getElementById('panel').classList.toggle('open');
 });
-document.addEventListener('click', () => document.getElementById('panel').classList.remove('open'));
+document.addEventListener('click', () => {
+  document.getElementById('panel').classList.remove('open');
+  document.getElementById('addPanel').classList.remove('open');
+  document.getElementById('newWordSuggestions').classList.remove('open');
+});
 document.getElementById('panel').addEventListener('click', e => e.stopPropagation());
+
+// Add word panel
+document.getElementById('addBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  document.getElementById('panel').classList.remove('open');
+  const wasOpen = document.getElementById('addPanel').classList.contains('open');
+  document.getElementById('addPanel').classList.toggle('open');
+  if (wasOpen) return;
+  document.getElementById('newWord').value = '';
+  document.getElementById('newDefinition').value = '';
+  document.getElementById('addStatus').textContent = '';
+  setEditMode(null);
+});
+document.getElementById('addPanel').addEventListener('click', e => e.stopPropagation());
+
+// Word autocomplete (mirrors search); picking a match loads it for editing
+const newWordInput = document.getElementById('newWord');
+const newDefinitionInput = document.getElementById('newDefinition');
+const submitWordBtn = document.getElementById('submitWordBtn');
+const newWordSuggestions = document.getElementById('newWordSuggestions');
+let newWordMatches = [];
+let editingOriginalWord = null;
+
+function setEditMode(original) {
+  editingOriginalWord = original;
+  submitWordBtn.textContent = original ? 'Update word' : 'Add word';
+}
+
+newWordInput.addEventListener('input', () => {
+  setEditMode(null);
+  const q = newWordInput.value.trim().toLowerCase();
+  if (!q || !words.length) { newWordSuggestions.classList.remove('open'); return; }
+  newWordMatches = words.filter(w => w.word.toLowerCase().includes(q)).slice(0, 8);
+  if (!newWordMatches.length) { newWordSuggestions.classList.remove('open'); return; }
+  newWordSuggestions.innerHTML = newWordMatches.map((w, i) => {
+    const lower = w.word.toLowerCase();
+    const qi = lower.indexOf(q);
+    const hl = esc(w.word.slice(0, qi)) +
+               `<mark>${esc(w.word.slice(qi, qi + q.length))}</mark>` +
+               esc(w.word.slice(qi + q.length));
+    return `<div class="sug-item" data-i="${i}">${hl}</div>`;
+  }).join('');
+  newWordSuggestions.classList.add('open');
+});
+
+newWordSuggestions.addEventListener('click', e => {
+  const item = e.target.closest('.sug-item');
+  if (!item) return;
+  const entry = newWordMatches[+item.dataset.i];
+  newWordInput.value = entry.word;
+  newDefinitionInput.value = entry.definition;
+  setEditMode(entry.word);
+  newWordSuggestions.classList.remove('open');
+  const statusEl = document.getElementById('addStatus');
+  statusEl.textContent = 'Editing existing word';
+  statusEl.className = 'notif-status';
+});
+
+document.getElementById('submitWordBtn').addEventListener('click', async e => {
+  e.stopPropagation();
+  const wordEl = document.getElementById('newWord');
+  const defEl = document.getElementById('newDefinition');
+  const statusEl = document.getElementById('addStatus');
+  const word = wordEl.value.trim();
+  const definition = defEl.value.trim();
+  if (!word || !definition) {
+    statusEl.textContent = 'Both fields required';
+    statusEl.className = 'notif-status blocked';
+    return;
+  }
+  if (!editingOriginalWord && words.some(w => w.word.toLowerCase() === word.toLowerCase())) {
+    statusEl.textContent = 'Word already exists';
+    statusEl.className = 'notif-status blocked';
+    return;
+  }
+  newWordSuggestions.classList.remove('open');
+  statusEl.textContent = 'Saving…';
+  statusEl.className = 'notif-status';
+  try {
+    const res = await fetch('/api/words', {
+      method: editingOriginalWord ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editingOriginalWord ? { original: editingOriginalWord, word, definition } : { word, definition })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Save failed');
+    if (editingOriginalWord) {
+      const idx = words.findIndex(w => w.word.toLowerCase() === editingOriginalWord.toLowerCase());
+      if (idx >= 0) words[idx] = data;
+      statusEl.textContent = 'Updated';
+    } else {
+      words.push(data);
+      statusEl.textContent = 'Added';
+    }
+    wordEl.value = '';
+    defEl.value = '';
+    setEditMode(null);
+    statusEl.className = 'notif-status ok';
+    document.getElementById('counter').textContent = `${seen.size} / ${words.length} seen`;
+  } catch (err) {
+    statusEl.textContent = err.message;
+    statusEl.className = 'notif-status blocked';
+  }
+});
 
 // Web Notifications
 async function ensurePermission() {
